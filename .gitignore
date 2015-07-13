@@ -1,0 +1,8 @@
+.*swp
+*.o
+*.a
+tags
+config.h
+epoll
+sha
+transfer
