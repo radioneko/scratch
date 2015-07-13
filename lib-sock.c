@@ -119,3 +119,148 @@ error:
 	errno = yes;
 	return -1;
 }
+
+/* Try to read from non-blocking descriptor. Returns -1 and EAGAIN if timout reached
+ * and not a single byte of data was received. */
+int
+read_ms(int fd, void *buf, unsigned len, unsigned ms)
+{
+	int l;
+	do {
+		l = read(fd, buf, len);
+		if (l == -1) {
+			int e = errno;
+			if (e == EINTR)
+				continue;
+			if (e == EAGAIN) {
+				struct pollfd pfd;
+				pfd.fd = fd;
+				pfd.events = POLLIN;
+				if (poll(&pfd, 1, ms) == 1)
+					continue;
+				errno = EAGAIN;
+			}
+			return -1;
+		}
+	} while (l < 0);
+	return l;
+}
+/* Try to write to non-blocking descriptor. Returns -1 and EAGAIN if timeout reached.
+ * Function returns immediatly as soon as any data had been send. */
+int
+write_ms(int fd, const void *buf, unsigned len, unsigned ms)
+{
+	int l;
+	do {
+		l = write(fd, buf, len);
+		if (l == -1) {
+			int e = errno;
+			if (e == EINTR)
+				continue;
+			if (e == EAGAIN) {
+				struct pollfd pfd;
+				pfd.fd = fd;
+				pfd.events = POLLOUT | POLLERR;
+				if (poll(&pfd, 1, ms) == 1 && (pfd.revents & POLLOUT))
+					continue;
+				errno = EAGAIN;
+			}
+			return -1;
+		}
+	} while (l < 0);
+	return l;
+}
+
+/* Write whole buffer to specified descriptor.
+ * On error returns number of bytes that were successfully sent. That means error condition for
+ * this function is result != len.
+ * ms - timeout in millisecond between successful writes. So having write timeout of
+ * 2 seconds (2000 ms) may theoretically result in 2 * len seconds to send whole buffer. */
+int
+write_full_ms(int fd, const void *buf, unsigned len, unsigned ms)
+{
+	unsigned pos = 0;
+	do {
+		int l = write_ms(fd, buf + pos, len - pos, ms);
+		if (l < 0)
+			break;
+		pos += l;
+	} while (pos < len);
+	return pos;
+}
+
+/* write whole iovec or return an error */
+int
+writev_full(int fd, struct iovec *iov, unsigned iov_cnt)
+{
+	int nwritten = 0;
+	while (iov_cnt) {
+		int bytes = writev(fd, iov, iov_cnt);
+		if (bytes > 0) {
+			nwritten += bytes;
+			while (bytes && bytes >= iov->iov_len) {
+				bytes -= iov->iov_len;
+				iov++;
+				iov_cnt--;
+			}
+			if (bytes) {
+				iov->iov_base = (char*)iov->iov_base + bytes;
+				iov->iov_len -= bytes;
+			}
+		} else {
+			switch (errno) {
+			case EINTR:
+			case EAGAIN:
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+			case EWOULDBLOCK:
+#endif
+				continue;
+			default:
+				return -1;
+			}
+		}
+	}
+	return nwritten;
+}
+
+/* Same as writev_full but with timeouts between successive writevs */
+int
+writev_full_ms(int fd, struct iovec *iov, unsigned iov_cnt, unsigned ms)
+{
+	int nwritten = 0;
+	while (iov_cnt) {
+		int bytes = writev(fd, iov, iov_cnt);
+		if (bytes > 0) {
+			nwritten += bytes;
+			while (bytes && bytes >= iov->iov_len) {
+				bytes -= iov->iov_len;
+				iov++;
+				iov_cnt--;
+			}
+			if (bytes) {
+				iov->iov_base = (char*)iov->iov_base + bytes;
+				iov->iov_len -= bytes;
+			}
+		} else {
+			switch (errno) {
+			case EINTR:
+				continue;
+			case EAGAIN:
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+			case EWOULDBLOCK:
+#endif
+				{
+					struct pollfd pfd;
+					pfd.fd = fd;
+					pfd.events = POLLOUT | POLLERR;
+					if (poll(&pfd, 1, ms) == 1 && (pfd.revents & POLLOUT))
+						continue;
+				}
+				/* fallthrough */
+			default:
+				return -1;
+			}
+		}
+	}
+	return nwritten;
+}
