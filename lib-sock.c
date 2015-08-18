@@ -83,6 +83,9 @@ nonblock_connect(int sock,struct sockaddr *sa,socklen_t sl,int timeout)
 			socklen_t l = sizeof(err);
 			if (getsockopt (sock, SOL_SOCKET, SO_ERROR, &err, &l) != 0) return -1;
 			if (!err) return 0; // Success
+			errno = err;
+		} else {
+			errno = ETIMEDOUT;
 		}
 	}
 	return -1;

@@ -25,6 +25,10 @@ Attempt to investigate how effective `EPOLLET` + `splice(2)` can be.
 If reading/restoring checksum state works as expected (for resuming of
 large transfers checksums).
 
+### connect.c
+
+How to get correct errno when dealing with non-blocking connect
+
 ### lib-*.c
 
 Miscellaneous wrappers to make writing test samples easy-breezy

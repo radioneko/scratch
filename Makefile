@@ -1,6 +1,6 @@
 CFLAGS := -std=gnu99 -D_GNU_SOURCE -O2 -Wall -g -Wno-unused-function -Wno-unused-result
 CC := gcc-4.9.2
-BIN := epoll sha transfer
+BIN := epoll sha transfer connect
 
 r: transfer
 	./$<
